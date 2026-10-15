@@ -1,41 +1,41 @@
 package main
 
 import (
-	"fmt"
+	"database/sql"
 	"log"
 	"net/http"
+	"os"
 	"sync/atomic"
+
+	"github.com/dannybouy/chirpy/internal/database"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
-}
-
-// countRequestHits returns the number of requests served by the file server
-func (cfg *apiConfig) countRequestHits() int32 {
-	return cfg.fileserverHits.Load()
-}
-
-// middlewareMetricsInc increments the fileserverHits counter and serves the next handler
-func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cfg.fileserverHits.Add(1)
-		next.ServeHTTP(w, r)
-	})
-}
-
-// handlerMetrics returns the number of requests served by the file server
-func (cfg *apiConfig) handlerMetrics(w http.ResponseWriter, r *http.Request) {
-	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write(fmt.Appendf([]byte{}, "Hits: %d\n", cfg.countRequestHits()))
+	db *database.Queries
 }
 
 func main() {
 	const filepathRoot = "."
 	const port = "8080"
+
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		log.Fatal("DB_URL is not set")
+	}
+	dbConn, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatalf("Error opening database: %s", err)
+	}
+
+	dbQueries := database.New(dbConn)
+	
 	apiConfig := apiConfig{
 		fileserverHits: atomic.Int32{},
+		db: dbQueries,
 	}
 	fileServerHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
 
@@ -46,13 +46,16 @@ func main() {
 	mux.Handle("/app/", apiConfig.middlewareMetricsInc(fileServerHandler))
 
 	// Register the healthz handler for the /healthz path.
-	mux.HandleFunc("GET /healthz", handlerReadiness)
+	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 
 	// Register the metrics handler for the /metrics path.
-	mux.HandleFunc("GET /metrics", apiConfig.handlerMetrics)
+	mux.HandleFunc("GET /admin/metrics", apiConfig.handlerMetrics)
 
 	// Register the reset metrics handler for the /reset path.
-	mux.HandleFunc("POST /reset", apiConfig.handlerResetMetrics)
+	mux.HandleFunc("POST /admin/reset", apiConfig.handlerResetMetrics)
+
+	// Register validate_chirp endpoint
+	mux.HandleFunc("POST /api/validate_chirp", handlerValidateChirp)
 
 	// Create a new http.Server struct and set the Address and Handler.
 	server := &http.Server{
