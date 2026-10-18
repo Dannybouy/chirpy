@@ -1,0 +1,129 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"regexp"
+	"time"
+
+	"github.com/dannybouy/chirpy/internal/database"
+	"github.com/google/uuid"
+)
+
+type Chirp struct {
+	ID uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body string `json:"body"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Body string `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
+		return
+	}
+
+	cleanedChirp, err := validateChirp(params.Body)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid chirp", err)
+		return
+	}
+	
+	// save the validated chirp to the database
+	chirp, err := cfg.db.CreateChirps(r.Context(), database.CreateChirpsParams{
+		Body: cleanedChirp,
+		UserID: params.UserID,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp", err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusCreated, Chirp{
+		ID: chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body: chirp.Body,
+		UserID: chirp.UserID,
+	})
+}
+
+func (cfg *apiConfig) handlerGetAllChirps(w http.ResponseWriter, r *http.Request) {
+	chirps, err := cfg.db.GetAllChirps(r.Context())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps", err)
+		return
+	}
+
+	resp := make([]Chirp, len(chirps))
+	for idx, chirp := range chirps {
+		resp[idx] = Chirp{
+			ID: chirp.ID,
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body: chirp.Body,
+			UserID: chirp.UserID,
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, resp)
+}
+
+func (cfg *apiConfig) handlerGetSingleChirp(w http.ResponseWriter, r *http.Request) {
+	chirpID := r.PathValue("chirpID")
+
+	if chirpID == "" {
+		respondWithError(w, http.StatusBadRequest, "chirpID is required", nil)
+		return
+	}
+	
+	chirp, err := cfg.db.GetSingleChirp(r.Context(), uuid.MustParse(chirpID))
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, "Couldn't get chirp", err)
+		return
+	}
+	respondWithJSON(w, http.StatusOK, Chirp{
+		ID: chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body: chirp.Body,
+		UserID: chirp.UserID,
+	})
+}
+func validateChirp(body string) (string, error) {
+	if body == "" {
+		return "", errors.New("chirp is empty")
+	}
+	if len(body) > 140 {
+		return "", errors.New("chirp is too long")
+	}
+
+	replacementWords := map[string]string {
+		"kerfuffle": "****",
+		"sharbert": "****",
+		"fornax": "****",
+	}
+
+	cleanedBody := getCleanedBody(body, replacementWords)
+	return cleanedBody, nil
+}
+
+func getCleanedBody(body string, replacementWords map[string]string) string {	
+	for oldWord, newWord := range replacementWords {
+		pattern := `(?i)\b` + regexp.QuoteMeta(oldWord) + `\b`
+		re := regexp.MustCompile(pattern)
+		body = re.ReplaceAllString(body, newWord)
+	}
+	return body
+}

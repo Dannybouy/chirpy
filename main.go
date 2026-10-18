@@ -15,6 +15,7 @@ import (
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	db *database.Queries
+	platform string
 }
 
 func main() {
@@ -23,6 +24,7 @@ func main() {
 
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
+	platform := os.Getenv("PLATFORM")
 	if dbURL == "" {
 		log.Fatal("DB_URL is not set")
 	}
@@ -32,10 +34,11 @@ func main() {
 	}
 
 	dbQueries := database.New(dbConn)
-	
+
 	apiConfig := apiConfig{
 		fileserverHits: atomic.Int32{},
 		db: dbQueries,
+		platform: platform,
 	}
 	fileServerHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
 
@@ -54,8 +57,17 @@ func main() {
 	// Register the reset metrics handler for the /reset path.
 	mux.HandleFunc("POST /admin/reset", apiConfig.handlerResetMetrics)
 
-	// Register validate_chirp endpoint
-	mux.HandleFunc("POST /api/validate_chirp", handlerValidateChirp)
+	// Register the create user endpoint
+	mux.HandleFunc("POST /api/users", apiConfig.handlerCreateUser)
+
+	// Register a new chirp endpoint
+	mux.HandleFunc("POST /api/chirps", apiConfig.handlerCreateChirp)
+
+	// Register a new Get All Chirps endpoint
+	mux.HandleFunc("GET /api/chirps", apiConfig.handlerGetAllChirps)
+
+	// Register a new Get Chirp endpoint
+	mux.HandleFunc("GET /api/chirps/{chirpID}", apiConfig.handlerGetSingleChirp)
 
 	// Create a new http.Server struct and set the Address and Handler.
 	server := &http.Server{
