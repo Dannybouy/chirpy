@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -30,7 +31,7 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 	err := decoder.Decode(&params)
 
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
+		respondWithError(w, http.StatusBadRequest, "Couldn't decode parameters", err)
 		return
 	}
 
@@ -87,12 +88,23 @@ func (cfg *apiConfig) handlerGetSingleChirp(w http.ResponseWriter, r *http.Reque
 		respondWithError(w, http.StatusBadRequest, "chirpID is required", nil)
 		return
 	}
-	
-	chirp, err := cfg.db.GetSingleChirp(r.Context(), uuid.MustParse(chirpID))
+
+	id, err := uuid.Parse(chirpID)
 	if err != nil {
-		respondWithError(w, http.StatusNotFound, "Couldn't get chirp", err)
+		respondWithError(w, http.StatusBadRequest, "Invalid chirpID", err)
 		return
 	}
+	
+	chirp, err := cfg.db.GetSingleChirp(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		respondWithError(w, http.StatusNotFound, "Chirp not found", err)
+		return
+	}
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get chirp", err)
+		return
+	}
+
 	respondWithJSON(w, http.StatusOK, Chirp{
 		ID: chirp.ID,
 		CreatedAt: chirp.CreatedAt,
