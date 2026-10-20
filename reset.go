@@ -1,8 +1,8 @@
 package main
 
 import (
-	"net/http"
 	"errors"
+	"net/http"
 )
 
 // handlerResetMetrics resets the fileserverHits counter to zero

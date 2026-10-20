@@ -14,8 +14,9 @@ import (
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
-	db *database.Queries
-	platform string
+	db             *database.Queries
+	platform       string
+	jwtSecret      string
 }
 
 func main() {
@@ -25,6 +26,10 @@ func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
 	platform := os.Getenv("PLATFORM")
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET is not set")
+	}
 	if dbURL == "" {
 		log.Fatal("DB_URL is not set")
 	}
@@ -37,8 +42,9 @@ func main() {
 
 	apiConfig := apiConfig{
 		fileserverHits: atomic.Int32{},
-		db: dbQueries,
-		platform: platform,
+		db:             dbQueries,
+		platform:       platform,
+		jwtSecret:      jwtSecret,
 	}
 	fileServerHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
 
@@ -57,8 +63,17 @@ func main() {
 	// Register the reset metrics handler for the /reset path.
 	mux.HandleFunc("POST /admin/reset", apiConfig.handlerResetMetrics)
 
+	// Register the refresh token endpoint
+	mux.HandleFunc("POST /api/refresh", apiConfig.handlerRefreshToken)
+
+	// Register a new revoke token endpoint
+	mux.HandleFunc("POST /api/revoke", apiConfig.handlerRevokeToken)
+
 	// Register the create user endpoint
 	mux.HandleFunc("POST /api/users", apiConfig.handlerCreateUser)
+
+	// Register the login endpoint
+	mux.HandleFunc("POST /api/login", apiConfig.handlerLoginUser)
 
 	// Register a new chirp endpoint
 	mux.HandleFunc("POST /api/chirps", apiConfig.handlerCreateChirp)
