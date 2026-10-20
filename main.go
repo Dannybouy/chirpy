@@ -72,6 +72,9 @@ func main() {
 	// Register the create user endpoint
 	mux.HandleFunc("POST /api/users", apiConfig.handlerCreateUser)
 
+	// Register the update user endpoint
+	mux.HandleFunc("PUT /api/users", apiConfig.handlerUpdateUser)
+
 	// Register the login endpoint
 	mux.HandleFunc("POST /api/login", apiConfig.handlerLoginUser)
 
@@ -83,6 +86,9 @@ func main() {
 
 	// Register a new Get Chirp endpoint
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiConfig.handlerGetSingleChirp)
+
+	// Register a new delete chirp endpoint
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiConfig.handlerDeleteChirp)
 
 	// Create a new http.Server struct and set the Address and Handler.
 	server := &http.Server{
