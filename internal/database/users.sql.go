@@ -91,7 +91,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 
 const updateUser = `-- name: UpdateUser :one
 UPDATE users
-SET email = $1, hashed_password = $2
+SET email = $1, hashed_password = $2, updated_at = now()
 WHERE id = $3
 RETURNING id, created_at, updated_at, email, hashed_password, is_chirpy_red
 `
@@ -118,8 +118,9 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 
 const upgradeUserToChirpyRed = `-- name: UpgradeUserToChirpyRed :exec
 UPDATE users
-SET is_chirpy_red = TRUE
+SET is_chirpy_red = TRUE, updated_at = now()
 WHERE id = $1
+RETURNING id, created_at, updated_at, email, hashed_password, is_chirpy_red
 `
 
 func (q *Queries) UpgradeUserToChirpyRed(ctx context.Context, id uuid.UUID) error {

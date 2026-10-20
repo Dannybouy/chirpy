@@ -1,7 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/dannybouy/chirpy/internal/auth"
@@ -16,21 +18,21 @@ func (cfg *apiConfig) handlerPolkaWebhooks(w http.ResponseWriter, r *http.Reques
 		} `json:"data"`
 	}
 
-	decoder := json.NewDecoder(r.Body)
-	params := parameters{}
-	err := decoder.Decode(&params)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Couldn't decode parameters", err)
-		return
-	}
-
 	apiKey, err := auth.GetAPIKey(r.Header)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Invalid API key", err)
+		respondWithError(w, http.StatusUnauthorized, "Couldn't find API key", err)
 		return
 	}
 	if apiKey != cfg.polkaKey {
 		respondWithError(w, http.StatusUnauthorized, "Invalid API key", err)
+		return
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err = decoder.Decode(&params)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Couldn't decode parameters", err)
 		return
 	}
 
@@ -53,6 +55,10 @@ func (cfg *apiConfig) handlerPolkaWebhooks(w http.ResponseWriter, r *http.Reques
 
 	err = cfg.db.UpgradeUserToChirpyRed(r.Context(), userID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows){
+			respondWithError(w, http.StatusNotFound, "User not found", err)
+			return
+		}
 		respondWithError(w, http.StatusInternalServerError, "Couldn't upgrade user", err)
 		return
 	}

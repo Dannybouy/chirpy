@@ -158,27 +158,35 @@ func (apiCfg *apiConfig) handlerUpdateUser(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	user, err := apiCfg.db.GetUserByID(r.Context(), userID)
+	_, err = apiCfg.db.GetUserByID(r.Context(), userID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't look up user", err)
 		return
 	}
+	if errors.Is(err, sql.ErrNoRows) {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized", err)
+		return
+	}
 
-	_, err = apiCfg.db.UpdateUser(r.Context(), database.UpdateUserParams{
+	updatedUser, err := apiCfg.db.UpdateUser(r.Context(), database.UpdateUserParams{
 		Email:          params.Email,
 		HashedPassword: hashedPassword,
 		ID:             userID,
 	})
+	if errors.Is(err, sql.ErrNoRows) {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized", err)
+		return
+	}
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't update user", err)
 		return
 	}
 
 	respondWithJSON(w, http.StatusOK, User{
-		ID:          userID,
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
-		Email:       params.Email,
-		IsChirpyRed: user.IsChirpyRed,
+		ID:          updatedUser.ID,
+		CreatedAt:   updatedUser.CreatedAt,
+		UpdatedAt:   updatedUser.UpdatedAt,
+		Email:       updatedUser.Email,
+		IsChirpyRed: updatedUser.IsChirpyRed,
 	})
 }

@@ -142,7 +142,7 @@ func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request)
 
 	userID, err := auth.ValidateJWT(accessToken, cfg.jwtSecret)
 	if err != nil {
-		respondWithError(w, http.StatusForbidden, "Unauthorized", err)
+		respondWithError(w, http.StatusUnauthorized, "Invalid JWT", err)
 		return
 	}
 
@@ -172,7 +172,7 @@ func (cfg *apiConfig) handlerDeleteChirp(w http.ResponseWriter, r *http.Request)
 		UserID: userID,
 	})
 	if err != nil {
-		respondWithError(w, http.StatusNotFound, "Couldn't find chirp", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't delete chirp", err)
 		return
 	}
 
