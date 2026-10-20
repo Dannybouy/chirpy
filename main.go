@@ -14,8 +14,10 @@ import (
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
-	db *database.Queries
-	platform string
+	db             *database.Queries
+	platform       string
+	jwtSecret      string
+	polkaKey       string
 }
 
 func main() {
@@ -25,8 +27,16 @@ func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
 	platform := os.Getenv("PLATFORM")
+	jwtSecret := os.Getenv("JWT_SECRET")
+	polkaKey := os.Getenv("POLKA_KEY")
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET is not set")
+	}
 	if dbURL == "" {
 		log.Fatal("DB_URL is not set")
+	}
+	if polkaKey == "" {
+		log.Fatal("POLKA_KEY is not set")
 	}
 	dbConn, err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -37,8 +47,10 @@ func main() {
 
 	apiConfig := apiConfig{
 		fileserverHits: atomic.Int32{},
-		db: dbQueries,
-		platform: platform,
+		db:             dbQueries,
+		platform:       platform,
+		jwtSecret:      jwtSecret,
+		polkaKey:       polkaKey,
 	}
 	fileServerHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
 
@@ -57,8 +69,20 @@ func main() {
 	// Register the reset metrics handler for the /reset path.
 	mux.HandleFunc("POST /admin/reset", apiConfig.handlerResetMetrics)
 
+	// Register the refresh token endpoint
+	mux.HandleFunc("POST /api/refresh", apiConfig.handlerRefreshToken)
+
+	// Register a new revoke token endpoint
+	mux.HandleFunc("POST /api/revoke", apiConfig.handlerRevokeToken)
+
 	// Register the create user endpoint
 	mux.HandleFunc("POST /api/users", apiConfig.handlerCreateUser)
+
+	// Register the update user endpoint
+	mux.HandleFunc("PUT /api/users", apiConfig.handlerUpdateUser)
+
+	// Register the login endpoint
+	mux.HandleFunc("POST /api/login", apiConfig.handlerLoginUser)
 
 	// Register a new chirp endpoint
 	mux.HandleFunc("POST /api/chirps", apiConfig.handlerCreateChirp)
@@ -68,6 +92,12 @@ func main() {
 
 	// Register a new Get Chirp endpoint
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiConfig.handlerGetSingleChirp)
+
+	// Register a new delete chirp endpoint
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiConfig.handlerDeleteChirp)
+
+	// Register the polka webhook endpoint
+	mux.HandleFunc("POST /api/polka/webhooks", apiConfig.handlerPolkaWebhooks)
 
 	// Create a new http.Server struct and set the Address and Handler.
 	server := &http.Server{
