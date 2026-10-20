@@ -17,6 +17,7 @@ type apiConfig struct {
 	db             *database.Queries
 	platform       string
 	jwtSecret      string
+	polkaKey       string
 }
 
 func main() {
@@ -27,11 +28,15 @@ func main() {
 	dbURL := os.Getenv("DB_URL")
 	platform := os.Getenv("PLATFORM")
 	jwtSecret := os.Getenv("JWT_SECRET")
+	polkaKey := os.Getenv("POLKA_KEY")
 	if jwtSecret == "" {
 		log.Fatal("JWT_SECRET is not set")
 	}
 	if dbURL == "" {
 		log.Fatal("DB_URL is not set")
+	}
+	if polkaKey == "" {
+		log.Fatal("POLKA_KEY is not set")
 	}
 	dbConn, err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -45,6 +50,7 @@ func main() {
 		db:             dbQueries,
 		platform:       platform,
 		jwtSecret:      jwtSecret,
+		polkaKey:       polkaKey,
 	}
 	fileServerHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
 
@@ -89,6 +95,9 @@ func main() {
 
 	// Register a new delete chirp endpoint
 	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiConfig.handlerDeleteChirp)
+
+	// Register the polka webhook endpoint
+	mux.HandleFunc("POST /api/polka/webhooks", apiConfig.handlerPolkaWebhooks)
 
 	// Create a new http.Server struct and set the Address and Handler.
 	server := &http.Server{
