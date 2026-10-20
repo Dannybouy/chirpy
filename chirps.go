@@ -73,24 +73,20 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 }
 
 func (cfg *apiConfig) handlerGetAllChirps(w http.ResponseWriter, r *http.Request) {
-	chirps, err := cfg.db.GetAllChirps(r.Context())
+	params, err := parseChirpListParams(r)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+
+	chirps, err := cfg.db.ListChirps(r.Context(), params)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't get chirps", err)
 		return
 	}
-
-	resp := make([]Chirp, len(chirps))
-	for idx, chirp := range chirps {
-		resp[idx] = Chirp{
-			ID:        chirp.ID,
-			CreatedAt: chirp.CreatedAt,
-			UpdatedAt: chirp.UpdatedAt,
-			Body:      chirp.Body,
-			UserID:    chirp.UserID,
-		}
-	}
-
+	resp := toChirpResponse(chirps)
 	respondWithJSON(w, http.StatusOK, resp)
+
 }
 
 func (cfg *apiConfig) handlerGetSingleChirp(w http.ResponseWriter, r *http.Request) {
@@ -204,4 +200,42 @@ func getCleanedBody(body string, replacementWords map[string]string) string {
 		body = re.ReplaceAllString(body, newWord)
 	}
 	return body
+}
+
+func parseChirpListParams(r *http.Request) (database.ListChirpsParams, error) {
+	queryParams := r.URL.Query()
+	params := database.ListChirpsParams{}
+
+	if raw := queryParams.Get("author_id"); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return params, errors.New("invalid author_id")
+		}
+		params.AuthorID = uuid.NullUUID{
+			UUID:  id,
+			Valid: true,
+		}
+	}
+	switch queryParams.Get("sort") {
+	case "", "asc":
+	case "desc":
+		params.SortDesc = true
+	default:
+		return params, errors.New("invalid sort")
+	}
+	return params, nil
+}
+
+func toChirpResponse(chirps []database.Chirp) []Chirp {
+	resp := make([]Chirp, len(chirps))
+	for idx, chirp := range chirps {
+		resp[idx] = Chirp{
+			ID:        chirp.ID,
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID,
+		}
+	}
+	return resp
 }

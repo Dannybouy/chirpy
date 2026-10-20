@@ -89,6 +89,39 @@ func (q *Queries) GetAllChirps(ctx context.Context) ([]Chirp, error) {
 	return items, nil
 }
 
+const getChirpsByAuthor = `-- name: GetChirpsByAuthor :many
+SELECT id, created_at, updated_at, user_id, body FROM chirps WHERE user_id = $1 ORDER BY created_at ASC
+`
+
+func (q *Queries) GetChirpsByAuthor(ctx context.Context, userID uuid.UUID) ([]Chirp, error) {
+	rows, err := q.db.QueryContext(ctx, getChirpsByAuthor, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Chirp
+	for rows.Next() {
+		var i Chirp
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.UserID,
+			&i.Body,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getSingleChirp = `-- name: GetSingleChirp :one
 SELECT id, created_at, updated_at, user_id, body FROM chirps WHERE id = $1
 `
@@ -104,4 +137,47 @@ func (q *Queries) GetSingleChirp(ctx context.Context, id uuid.UUID) (Chirp, erro
 		&i.Body,
 	)
 	return i, err
+}
+
+const listChirps = `-- name: ListChirps :many
+SELECT id, created_at, updated_at, user_id, body FROM chirps
+WHERE $1::uuid IS NULL
+    OR user_id = $1
+ORDER BY
+    CASE WHEN $2::bool THEN created_at END DESC,
+    created_at ASC
+`
+
+type ListChirpsParams struct {
+	AuthorID uuid.NullUUID
+	SortDesc bool
+}
+
+func (q *Queries) ListChirps(ctx context.Context, arg ListChirpsParams) ([]Chirp, error) {
+	rows, err := q.db.QueryContext(ctx, listChirps, arg.AuthorID, arg.SortDesc)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Chirp
+	for rows.Next() {
+		var i Chirp
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.UserID,
+			&i.Body,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
